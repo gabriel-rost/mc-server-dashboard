@@ -1,0 +1,12 @@
+[Unit]
+Description=Minecraft Bedrock Dedicated Server
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/minecraft
+ExecStart=/bin/sh -c "mkfifo /tmp/minecraft.fifo 2>/dev/null; tail -f /tmp/minecraft.fifo | LD_LIBRARY_PATH=. ./bedrock_server"
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151d">
+  <title>Dashboard do servidor</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #10151d;
+      color: #edf2f7;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --panel: #19212c;
+      --line: #303c4b;
+      --muted: #a8b4c3;
+      --accent: #64d6a3;
+      --danger: #ff8f8f;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    main { width: min(920px, calc(100% - 32px)); margin: 48px auto; }
+    header, .row, .actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    h1 { margin: 0; font-size: clamp(1.5rem, 4vw, 2rem); }
+    h2 { margin: 0 0 18px; font-size: 1.1rem; }
+    p { color: var(--muted); line-height: 1.5; }
+    .subtitle { margin: 8px 0 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
+    .card { padding: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+    .wide { grid-column: 1 / -1; }
+    label { display: block; margin: 14px 0 7px; color: var(--muted); font-size: .92rem; }
+    input { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #111821; color: inherit; font: inherit; }
+    button { padding: 10px 14px; border: 1px solid transparent; border-radius: 8px; background: var(--accent); color: #102019; font: inherit; font-weight: 700; cursor: pointer; }
+    button.secondary { border-color: var(--line); background: transparent; color: inherit; }
+    button.danger { background: var(--danger); }
+    button:disabled { opacity: .55; cursor: wait; }
+    .actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 16px; }
+    .status { color: var(--accent); font-weight: 700; text-transform: capitalize; }
+    .muted { color: var(--muted); }
+    .notice { min-height: 1.5em; margin: 14px 0 0; }
+    .notice.error { color: var(--danger); }
+    .notice.success { color: var(--accent); }
+    pre { overflow: auto; margin: 10px 0 0; padding: 12px; border-radius: 8px; background: #111821; color: var(--muted); white-space: pre-wrap; }
+    [hidden] { display: none !important; }
+    @media (max-width: 640px) {
+      main { margin: 24px auto; }
+      .grid { grid-template-columns: 1fr; }
+      .wide { grid-column: auto; }
+      header { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Dashboard do servidor</h1>
+        <p class="subtitle">Minecraft Bedrock e serviços da VM</p>
+      </div>
+      <button id="logout-button" class="secondary" type="button" hidden>Sair</button>
+    </header>
+
+    <section id="login-card" class="card" aria-labelledby="login-title" style="max-width: 440px; margin-top: 24px">
+      <h2 id="login-title">Entrar</h2>
+      <form id="login-form">
+        <label for="username">Usuário</label>
+        <input id="username" name="username" autocomplete="username" required>
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <div class="actions"><button id="login-button" type="submit">Entrar</button></div>
+      </form>
+    </section>
+
+    <p id="notice" class="notice" role="status" aria-live="polite"></p>
+
+    <section id="dashboard" class="grid" hidden>
+      <article class="card">
+        <div class="row">
+          <div>
+            <h2>Minecraft Bedrock</h2>
+            <span id="minecraft-status" class="status">carregando</span>
+          </div>
+          <button id="refresh-button" class="secondary" type="button">Atualizar</button>
+        </div>
+        <div class="actions">
+          <button id="restart-button" type="button">Reiniciar servidor</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Adicionar jogador</h2>
+        <form id="allowlist-form">
+          <label for="gamertag">Gamertag</label>
+          <input id="gamertag" name="gamertag" minlength="3" maxlength="16" pattern="[A-Za-z0-9_ ]+" required>
+          <div class="actions"><button type="submit">Adicionar à allowlist</button></div>
+        </form>
+      </article>
+
+      <article id="admin-card" class="card wide" hidden>
+        <h2>Controles de administrador</h2>
+        <label for="command">Comando do console Minecraft</label>
+        <form id="command-form" class="row">
+          <input id="command" name="command" maxlength="256" placeholder="Ex.: say Olá, jogadores" required>
+          <button type="submit">Enviar</button>
+        </form>
+        <div class="actions">
+          <button id="gaming-mode-button" class="secondary" type="button">Modo jogo</button>
+          <button id="web-mode-button" class="secondary" type="button">Modo web</button>
+          <button id="stop-all-button" class="danger" type="button">Parar todos</button>
+        </div>
+        <pre id="admin-status" hidden></pre>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const loginCard = document.querySelector("#login-card");
+      const dashboard = document.querySelector("#dashboard");
+      const adminCard = document.querySelector("#admin-card");
+      const notice = document.querySelector("#notice");
+      const loginForm = document.querySelector("#login-form");
+      const loginButton = document.querySelector("#login-button");
+      const logoutButton = document.querySelector("#logout-button");
+      const adminStatus = document.querySelector("#admin-status");
+      let authorization = null;
+      let role = null;
+
+      function showNotice(message, kind = "") {
+        notice.textContent = message;
+        notice.className = `notice ${kind}`;
+      }
+
+      function encodeBasic(username, password) {
+        const bytes = new TextEncoder().encode(`${username}:${password}`);
+        let binary = "";
+        bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+        return `Basic ${btoa(binary)}`;
+      }
+
+      async function request(path, options = {}) {
+        const headers = new Headers(options.headers || {});
+        headers.set("Authorization", authorization);
+        if (options.body) headers.set("Content-Type", "application/json");
+        const response = await fetch(path, { ...options, headers });
+        const payload = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          logout();
+          throw new Error("Credenciais inválidas ou sessão encerrada. Entre novamente.");
+        }
+        if (!response.ok) {
+          throw new Error(payload.detail || `Falha na requisição (${response.status}).`);
+        }
+        return payload;
+      }
+
+      function logout() {
+        authorization = null;
+        role = null;
+        loginForm.reset();
+        dashboard.hidden = true;
+        adminCard.hidden = true;
+        logoutButton.hidden = true;
+        loginCard.hidden = false;
+        document.querySelector("#username").focus();
+      }
+
+      async function loadStatus() {
+        const data = await request("/system/status");
+        const status = data.minecraft_status || data.services?.minecraft || "indisponível";
+        document.querySelector("#minecraft-status").textContent = status;
+        if (role === "admin") {
+          adminStatus.textContent = JSON.stringify({
+            memória: data.memory_summary,
+            serviços: data.services
+          }, null, 2);
+          adminStatus.hidden = false;
+        }
+      }
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        loginButton.disabled = true;
+        showNotice("");
+        const username = document.querySelector("#username").value.trim();
+        const passwordInput = document.querySelector("#password");
+        authorization = encodeBasic(username, passwordInput.value);
+        passwordInput.value = "";
+        try {
+          const user = await request("/auth/me");
+          role = user.role;
+          loginCard.hidden = true;
+          dashboard.hidden = false;
+          adminCard.hidden = role !== "admin";
+          logoutButton.hidden = false;
+          showNotice(`Conectado como ${user.username}.`, "success");
+          await loadStatus();
+        } catch (error) {
+          logout();
+          showNotice(error.message, "error");
+        } finally {
+          loginButton.disabled = false;
+        }
+      });
+
+      logoutButton.addEventListener("click", () => {
+        logout();
+        showNotice("Você saiu do painel.");
+      });
+
+      document.querySelector("#refresh-button").addEventListener("click", async () => {
+        try {
+          await loadStatus();
+          showNotice("Status atualizado.", "success");
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+      });
+
+      document.querySelector("#restart-button").addEventListener("click", async () => {
+        if (!confirm("Deseja reiniciar o servidor Minecraft?")) return;
+        try {
+          const result = await request("/minecraft/restart", { method: "POST" });
+          showNotice(result.message, "success");
+          await loadStatus();
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+      });
+
+      document.querySelector("#allowlist-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const gamertag = document.querySelector("#gamertag").value.trim();
+        try {
+          const result = await request("/minecraft/allowlist/add", {
+            method: "POST",
+            body: JSON.stringify({ gamertag })
+          });
+          showNotice(result.message, result.status === "success" ? "success" : "");
+          event.currentTarget.reset();
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+      });
+
+      document.querySelector("#command-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const command = document.querySelector("#command").value.trim();
+        try {
+          const result = await request(`/minecraft/command?command=${encodeURIComponent(command)}`, {
+            method: "POST"
+          });
+          showNotice(`Comando enviado: ${result.command_sent}`, "success");
+          event.currentTarget.reset();
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+      });
+
+      for (const [buttonId, path, confirmation] of [
+        ["gaming-mode-button", "/batch/gaming-mode", "Ativar modo jogo?"],
+        ["web-mode-button", "/batch/web-mode", "Ativar modo web?"],
+        ["stop-all-button", "/batch/stop-all", "Parar todos os serviços gerenciados?"]
+      ]) {
+        document.querySelector(`#${buttonId}`).addEventListener("click", async () => {
+          if (!confirm(confirmation)) return;
+          try {
+            const result = await request(path, { method: "POST" });
+            showNotice(result.message, "success");
+            await loadStatus();
+          } catch (error) {
+            showNotice(error.message, "error");
+          }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

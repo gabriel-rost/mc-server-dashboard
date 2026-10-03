@@ -1,0 +1,17 @@
+{
+  "admin": {
+    "secret": "",
+    "role": "admin",
+    "description": "Acesso total à VM, modos em lote e serviços web"
+  },
+  "amigo1": {
+    "secret": "",
+    "role": "moderator",
+    "description": "Amigo: pode reiniciar Minecraft e adicionar na allowlist"
+  },
+  "amigo2": {
+    "secret": "",
+    "role": "moderator",
+    "description": "Amigo: pode reiniciar Minecraft e adicionar na allowlist"
+  }
+}
