@@ -21,7 +21,7 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; }
-    main { width: min(920px, calc(100% - 32px)); margin: 48px auto; }
+    main { width: min(1040px, calc(100% - 32px)); margin: 48px auto; }
     header, .row, .actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     h1 { margin: 0; font-size: clamp(1.5rem, 4vw, 2rem); }
     h2 { margin: 0 0 18px; font-size: 1.1rem; }
@@ -30,6 +30,31 @@
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
     .card { padding: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
     .wide { grid-column: 1 / -1; }
+    .section-title { margin: 0 0 6px; }
+    .section-description { margin: 0 0 18px; font-size: .92rem; }
+    .resource-grid, .service-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .resource, .service { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: #141c26; }
+    .resource-label, .service-name { display: block; color: var(--muted); font-size: .9rem; }
+    .resource-value { display: block; margin-top: 8px; font-size: 1.35rem; font-weight: 750; }
+    .resource-detail { display: block; margin-top: 4px; color: var(--muted); font-size: .82rem; }
+    .meter { height: 8px; margin-top: 14px; overflow: hidden; border-radius: 99px; background: #263241; }
+    .meter-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
+    .resource.unavailable { color: var(--muted); }
+    .service { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .service-name { color: inherit; font-weight: 650; overflow-wrap: anywhere; }
+    .service-state { flex: 0 0 auto; padding: 4px 8px; border-radius: 99px; background: #263241; color: var(--muted); font-size: .78rem; font-weight: 700; text-transform: capitalize; }
+    .service-state.active { background: #183c31; color: var(--accent); }
+    .service-state.inactive, .service-state.failed, .service-state.error { background: #40272b; color: var(--danger); }
+    .player-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .player-list { display: grid; gap: 10px; }
+    .player-entry { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #141c26; }
+    .player-info { min-width: 0; }
+    .player-name { display: block; font-weight: 700; overflow-wrap: anywhere; }
+    .player-xuid { display: block; margin-top: 4px; color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+    .player-empty { margin: 0; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); }
+    .player-empty.error { color: var(--danger); }
+    .player-entry button { flex: 0 0 auto; }
+    .minecraft-card { min-height: 148px; }
     label { display: block; margin: 14px 0 7px; color: var(--muted); font-size: .92rem; }
     input { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #111821; color: inherit; font: inherit; }
     button { padding: 10px 14px; border: 1px solid transparent; border-radius: 8px; background: var(--accent); color: #102019; font: inherit; font-weight: 700; cursor: pointer; }
@@ -46,9 +71,11 @@
     [hidden] { display: none !important; }
     @media (max-width: 640px) {
       main { margin: 24px auto; }
-      .grid { grid-template-columns: 1fr; }
+      .grid, .resource-grid, .service-grid { grid-template-columns: 1fr; }
+      .player-columns { grid-template-columns: 1fr; }
       .wide { grid-column: auto; }
       header { align-items: flex-start; }
+      .minecraft-card { min-height: auto; }
     }
   </style>
 </head>
@@ -76,7 +103,7 @@
     <p id="notice" class="notice" role="status" aria-live="polite"></p>
 
     <section id="dashboard" class="grid" hidden>
-      <article class="card">
+      <article class="card minecraft-card">
         <div class="row">
           <div>
             <h2>Minecraft Bedrock</h2>
@@ -94,8 +121,42 @@
         <form id="allowlist-form">
           <label for="gamertag">Gamertag</label>
           <input id="gamertag" name="gamertag" minlength="3" maxlength="16" pattern="[A-Za-z0-9_ ]+" required>
+          <label for="xuid">XUID</label>
+          <input id="xuid" name="xuid" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" placeholder="16 dígitos" required>
           <div class="actions"><button type="submit">Adicionar à allowlist</button></div>
         </form>
+      </article>
+
+      <article id="player-management-card" class="card wide">
+        <div class="row">
+          <div>
+            <h2 class="section-title">Jogadores</h2>
+            <p class="section-description">Use os logs recentes para encontrar o gamertag e o XUID.</p>
+          </div>
+          <button id="refresh-players-button" class="secondary" type="button">Atualizar listas</button>
+        </div>
+        <div class="player-columns">
+          <section aria-labelledby="recent-players-title">
+            <h3 id="recent-players-title">Vistos recentemente</h3>
+            <div id="recent-players" class="player-list" aria-live="polite"></div>
+          </section>
+          <section aria-labelledby="allowlist-players-title">
+            <h3 id="allowlist-players-title">Jogadores aceitos</h3>
+            <div id="allowlist-players" class="player-list" aria-live="polite"></div>
+          </section>
+        </div>
+      </article>
+
+      <article id="resource-card" class="card wide" hidden>
+        <h2 class="section-title">Recursos do servidor</h2>
+        <p class="section-description">Memória em uso e disponível no sistema.</p>
+        <div id="resource-grid" class="resource-grid" aria-live="polite"></div>
+      </article>
+
+      <article id="services-card" class="card wide" hidden>
+        <h2 class="section-title">Serviços gerenciados</h2>
+        <p class="section-description">Estado atual dos serviços controlados pelo painel.</p>
+        <div id="service-grid" class="service-grid" aria-live="polite"></div>
       </article>
 
       <article id="admin-card" class="card wide" hidden>
@@ -110,7 +171,6 @@
           <button id="web-mode-button" class="secondary" type="button">Modo web</button>
           <button id="stop-all-button" class="danger" type="button">Parar todos</button>
         </div>
-        <pre id="admin-status" hidden></pre>
       </article>
     </section>
   </main>
@@ -120,11 +180,16 @@
       const loginCard = document.querySelector("#login-card");
       const dashboard = document.querySelector("#dashboard");
       const adminCard = document.querySelector("#admin-card");
+      const resourceCard = document.querySelector("#resource-card");
+      const servicesCard = document.querySelector("#services-card");
       const notice = document.querySelector("#notice");
       const loginForm = document.querySelector("#login-form");
       const loginButton = document.querySelector("#login-button");
       const logoutButton = document.querySelector("#logout-button");
-      const adminStatus = document.querySelector("#admin-status");
+      const recentPlayersList = document.querySelector("#recent-players");
+      const allowlistPlayersList = document.querySelector("#allowlist-players");
+      let recentPlayers = [];
+      let allowlistPlayers = [];
       let authorization = null;
       let role = null;
 
@@ -162,9 +227,98 @@
         loginForm.reset();
         dashboard.hidden = true;
         adminCard.hidden = true;
+        resourceCard.hidden = true;
+        servicesCard.hidden = true;
+        recentPlayers = [];
+        allowlistPlayers = [];
+        recentPlayersList.replaceChildren();
+        allowlistPlayersList.replaceChildren();
         logoutButton.hidden = true;
         loginCard.hidden = false;
         document.querySelector("#username").focus();
+      }
+
+      function formatMegabytes(value) {
+        if (value >= 1024) return `${(value / 1024).toFixed(1)} GB`;
+        return `${value} MB`;
+      }
+
+      function renderResources(lines) {
+        const grid = document.querySelector("#resource-grid");
+        grid.replaceChildren();
+        const memory = {};
+        for (const line of Array.isArray(lines) ? lines : []) {
+          const match = line.trim().match(/^(Mem|Swap):\s+(.+)$/);
+          if (!match) continue;
+          const values = match[2].trim().split(/\s+/).map(Number);
+          if (values.some((value) => !Number.isFinite(value))) continue;
+          if (match[1] === "Mem" && values.length >= 6) {
+            memory.ram = { total: values[0], available: values[5] };
+          } else if (match[1] === "Swap" && values.length >= 3) {
+            memory.swap = { total: values[0], available: values[2] };
+          }
+        }
+
+        for (const [key, label] of [["ram", "Memória RAM"], ["swap", "Memória Swap"]]) {
+          const item = memory[key];
+          const card = document.createElement("div");
+          card.className = `resource${item ? "" : " unavailable"}`;
+          if (!item || item.total <= 0) {
+            card.textContent = `${label}: indisponível`;
+          } else {
+            const available = Math.max(0, Math.min(item.available, item.total));
+            const used = item.total - available;
+            const percent = Math.round((used / item.total) * 100);
+            const title = document.createElement("span");
+            title.className = "resource-label";
+            title.textContent = label;
+            const value = document.createElement("strong");
+            value.className = "resource-value";
+            value.textContent = `${formatMegabytes(available)} disponível`;
+            const detail = document.createElement("span");
+            detail.className = "resource-detail";
+            detail.textContent = `${formatMegabytes(used)} em uso de ${formatMegabytes(item.total)} (${percent}%)`;
+            const meter = document.createElement("div");
+            meter.className = "meter";
+            meter.setAttribute("role", "meter");
+            meter.setAttribute("aria-label", `${label} em uso`);
+            meter.setAttribute("aria-valuemin", "0");
+            meter.setAttribute("aria-valuemax", "100");
+            meter.setAttribute("aria-valuenow", String(percent));
+            const fill = document.createElement("div");
+            fill.className = "meter-fill";
+            fill.style.width = `${percent}%`;
+            meter.append(fill);
+            card.append(title, value, detail, meter);
+          }
+          grid.append(card);
+        }
+      }
+
+      function renderServices(services) {
+        const grid = document.querySelector("#service-grid");
+        grid.replaceChildren();
+        const labels = {
+          minecraft: "Minecraft Bedrock",
+          church: "Church",
+          dispatcher: "Dispatcher",
+          flood: "Flood"
+        };
+        const webServices = services?.web_services || {};
+        const entries = [["minecraft", services?.minecraft], ...Object.entries(webServices)];
+        for (const [name, state] of entries) {
+          const card = document.createElement("div");
+          card.className = "service";
+          const title = document.createElement("span");
+          title.className = "service-name";
+          title.textContent = labels[name] || name;
+          const badge = document.createElement("span");
+          const normalizedState = String(state || "indisponível").toLowerCase();
+          badge.className = `service-state ${normalizedState}`;
+          badge.textContent = normalizedState;
+          card.append(title, badge);
+          grid.append(card);
+        }
       }
 
       async function loadStatus() {
@@ -172,11 +326,111 @@
         const status = data.minecraft_status || data.services?.minecraft || "indisponível";
         document.querySelector("#minecraft-status").textContent = status;
         if (role === "admin") {
-          adminStatus.textContent = JSON.stringify({
-            memória: data.memory_summary,
-            serviços: data.services
-          }, null, 2);
-          adminStatus.hidden = false;
+          renderResources(data.memory_summary);
+          renderServices(data.services);
+        }
+      }
+
+      function showEmptyList(container, message, isError = false) {
+        const empty = document.createElement("p");
+        empty.className = `player-empty${isError ? " error" : ""}`;
+        empty.textContent = message;
+        container.append(empty);
+      }
+
+      function renderRecentPlayers() {
+        recentPlayersList.replaceChildren();
+        if (!recentPlayers.length) {
+          showEmptyList(recentPlayersList, "Nenhuma entrada recente encontrada nos logs.");
+          return;
+        }
+        const acceptedXuids = new Set(
+          allowlistPlayers.map((player) => player.xuid).filter(Boolean)
+        );
+        for (const player of recentPlayers) {
+          const entry = document.createElement("div");
+          entry.className = "player-entry";
+          const info = document.createElement("div");
+          info.className = "player-info";
+          const name = document.createElement("span");
+          name.className = "player-name";
+          name.textContent = player.name;
+          const xuid = document.createElement("span");
+          xuid.className = "player-xuid";
+          xuid.textContent = `XUID: ${player.xuid}`;
+          info.append(name, xuid);
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "secondary";
+          button.textContent = acceptedXuids.has(player.xuid) ? "Já aceito" : "Adicionar";
+          button.disabled = acceptedXuids.has(player.xuid);
+          button.addEventListener("click", () => addPlayer(player.name, player.xuid));
+          entry.append(info, button);
+          recentPlayersList.append(entry);
+        }
+      }
+
+      function renderAllowlistPlayers() {
+        allowlistPlayersList.replaceChildren();
+        if (!allowlistPlayers.length) {
+          showEmptyList(allowlistPlayersList, "Ainda não há jogadores na allowlist.");
+          return;
+        }
+        for (const player of allowlistPlayers) {
+          const entry = document.createElement("div");
+          entry.className = "player-entry";
+          const info = document.createElement("div");
+          info.className = "player-info";
+          const name = document.createElement("span");
+          name.className = "player-name";
+          name.textContent = player.name;
+          const xuid = document.createElement("span");
+          xuid.className = "player-xuid";
+          xuid.textContent = player.xuid ? `XUID: ${player.xuid}` : "XUID não cadastrado";
+          info.append(name, xuid);
+          entry.append(info);
+          allowlistPlayersList.append(entry);
+        }
+      }
+
+      async function refreshPlayerLists() {
+        const [recentResult, allowlistResult] = await Promise.allSettled([
+          request("/minecraft/players/recent"),
+          request("/minecraft/allowlist")
+        ]);
+        const errors = [];
+        if (recentResult.status === "fulfilled") {
+          recentPlayers = recentResult.value.players;
+          renderRecentPlayers();
+        } else {
+          recentPlayersList.replaceChildren();
+          showEmptyList(recentPlayersList, recentResult.reason.message, true);
+          errors.push(recentResult.reason.message);
+        }
+        if (allowlistResult.status === "fulfilled") {
+          allowlistPlayers = allowlistResult.value.players;
+          renderAllowlistPlayers();
+          renderRecentPlayers();
+        } else {
+          allowlistPlayersList.replaceChildren();
+          showEmptyList(allowlistPlayersList, allowlistResult.reason.message, true);
+          errors.push(allowlistResult.reason.message);
+        }
+        if (errors.length) throw new Error(errors.join(" "));
+      }
+
+      async function addPlayer(gamertag, xuid) {
+        try {
+          const result = await request("/minecraft/allowlist/add", {
+            method: "POST",
+            body: JSON.stringify({ gamertag, xuid })
+          });
+          showNotice(result.message, result.status === "success" ? "success" : "");
+          await refreshPlayerLists();
+          return true;
+        } catch (error) {
+          showNotice(error.message, "error");
+          return false;
         }
       }
 
@@ -194,9 +448,16 @@
           loginCard.hidden = true;
           dashboard.hidden = false;
           adminCard.hidden = role !== "admin";
+          resourceCard.hidden = role !== "admin";
+          servicesCard.hidden = role !== "admin";
           logoutButton.hidden = false;
-          showNotice(`Conectado como ${user.username}.`, "success");
-          await loadStatus();
+          const results = await Promise.allSettled([loadStatus(), refreshPlayerLists()]);
+          const failure = results.find((result) => result.status === "rejected");
+          if (failure) {
+            showNotice(failure.reason.message, "error");
+          } else {
+            showNotice(`Conectado como ${user.username}.`, "success");
+          }
         } catch (error) {
           logout();
           showNotice(error.message, "error");
@@ -212,8 +473,17 @@
 
       document.querySelector("#refresh-button").addEventListener("click", async () => {
         try {
-          await loadStatus();
-          showNotice("Status atualizado.", "success");
+          await Promise.all([loadStatus(), refreshPlayerLists()]);
+          showNotice("Status e jogadores atualizados.", "success");
+        } catch (error) {
+          showNotice(error.message, "error");
+        }
+      });
+
+      document.querySelector("#refresh-players-button").addEventListener("click", async () => {
+        try {
+          await refreshPlayerLists();
+          showNotice("Listas de jogadores atualizadas.", "success");
         } catch (error) {
           showNotice(error.message, "error");
         }
@@ -233,16 +503,8 @@
       document.querySelector("#allowlist-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const gamertag = document.querySelector("#gamertag").value.trim();
-        try {
-          const result = await request("/minecraft/allowlist/add", {
-            method: "POST",
-            body: JSON.stringify({ gamertag })
-          });
-          showNotice(result.message, result.status === "success" ? "success" : "");
-          event.currentTarget.reset();
-        } catch (error) {
-          showNotice(error.message, "error");
-        }
+        const xuid = document.querySelector("#xuid").value.trim();
+        if (await addPlayer(gamertag, xuid)) event.currentTarget.reset();
       });
 
       document.querySelector("#command-form").addEventListener("submit", async (event) => {

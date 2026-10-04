@@ -1,0 +1,35 @@
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name MEU_DOMINIO;
+
+    access_log /var/log/nginx/MEU_DOMINIO.access.log;
+    error_log /var/log/nginx/MEU_DOMINIO.error.log;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+
+        # Repassa o Host correto para a aplicação
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        
+        # FORÇA o protocolo HTTPS para o FastAPI não gerar redirects em HTTP
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Scheme https;
+
+        # Ajusta automaticamente o cabeçalho 'Location' de respostas 301/307 do Uvicorn
+        proxy_redirect http:// https://;
+
+        # Suporte a WebSockets e HTTP 1.1
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Buffer para evitar erro com cookies/headers do Swagger
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+    }
+}

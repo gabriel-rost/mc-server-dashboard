@@ -11,8 +11,8 @@ O servidor opera em uma instância com recursos enxutos (1 GB de RAM física). O
 ```mermaid
 flowchart TD
     subgraph Client ["Clientes & Jogadores"]
-        Player["🎮 Jogadores Bedrock\n(mc.rost.app.br:19132 UDP)"]
-        Admin["📱 Admin / Navegador\n(dash.rost.app.br)"]
+        Player["🎮 Jogadores Bedrock\n(endereço público do servidor:19132 UDP)"]
+        Admin["📱 Admin / Navegador\n(endereço do painel)"]
     end
 
     subgraph OCI ["Oracle Cloud (OCI - Always Free)"]
@@ -25,7 +25,7 @@ flowchart TD
         subgraph Host ["Instância Ubuntu (1 GB RAM + 2 GB Swap)"]
             F岗PI["⚡ FastAPI Dashboard\n(systemd: server-dashboard)"]
             BDS["⛏️ Minecraft Bedrock\n(systemd: minecraft-bedrock)"]
-            WEB["🐍 Aplicações próprias\n(systemd: church, dispatcher, flaskapp, flood)"]
+            WEB["🐍 Aplicações próprias\n(systemd: church, dispatcher, flood)"]
             SWAP["💾 Swap NVMe/SSD (2 GB)\n(/swapfile - Proteção OOM)"]
         end
     end
@@ -103,7 +103,7 @@ sudo iptables -L INPUT -n -v --line-numbers
 
 ### C. Apontamento no Cloudflare
 - **Tipo:** `A`
-- **Nome:** `mc` (gera `mc.rost.app.br`)
+- **Nome:** `mc` (use o domínio configurado no seu provedor DNS)
 - **IPv4 address:** `<IP_PUBLICO_DA_VM>`
 - **Proxy status:** **DNS only (Nuvem Cinza)**
   > [!WARNING]
@@ -193,6 +193,16 @@ Environment=ENVIRONMENT=production
 
 Depois aplique a mudança com `sudo systemctl daemon-reload` e reinicie o serviço do dashboard. Em qualquer outro valor de `ENVIRONMENT` (ou se a variável não estiver definida), a documentação interativa permanece habilitada para desenvolvimento.
 
+O virtual host de exemplo em `nginx/mc-server-dashboard` redireciona HTTP para HTTPS e termina TLS no Nginx; ele espera um certificado Let's Encrypt em `/etc/letsencrypt/live/MEU_DOMINIO/`. Antes de instalá-lo, substitua `MEU_DOMINIO` pelo domínio real e emita o certificado com Certbot, usando a configuração HTTP atual e `sudo certbot --nginx -d <seu-dominio>`. Depois instale o virtual host atualizado e valide/recarregue o Nginx:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot renew --dry-run
+```
+
+Mantenha o Uvicorn vinculado a `127.0.0.1` e não exponha a porta `8080` publicamente. Se usar Cloudflare, configure SSL/TLS como **Full (strict)** para manter criptografia também entre o proxy e o Nginx.
+
 ### A. Camada de Segurança & RBAC (Role-Based Access Control)
 Para prevenir riscos ao executar comandos de sistema (`systemctl`), a API conta com:
 1. **Autenticação HTTP Basic**:
@@ -231,7 +241,7 @@ O FIFO precisa ser criado com acesso restrito e conectado a um leitor que encami
 Em vez de liberar comandos arbitrários com `*`, limite o `sudoers` aos serviços próprios e ao Minecraft. O serviço `redis.service` é um link para o Redis do sistema e não é controlado pelo dashboard; serviços da Oracle/Linux também ficam fora da whitelist.
 
 ```bash
-sudo bash -c 'echo "ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl start minecraft-bedrock, /bin/systemctl stop minecraft-bedrock, /bin/systemctl restart minecraft-bedrock, /bin/systemctl is-active minecraft-bedrock, /bin/systemctl start church, /bin/systemctl stop church, /bin/systemctl restart church, /bin/systemctl is-active church, /bin/systemctl start dispatcher, /bin/systemctl stop dispatcher, /bin/systemctl restart dispatcher, /bin/systemctl is-active dispatcher, /bin/systemctl start flaskapp, /bin/systemctl stop flaskapp, /bin/systemctl restart flaskapp, /bin/systemctl is-active flaskapp, /bin/systemctl start flood, /bin/systemctl stop flood, /bin/systemctl restart flood, /bin/systemctl is-active flood" > /etc/sudoers.d/dashboard-mc'
+sudo bash -c 'echo "ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl start minecraft-bedrock, /bin/systemctl stop minecraft-bedrock, /bin/systemctl restart minecraft-bedrock, /bin/systemctl is-active minecraft-bedrock, /bin/systemctl start church, /bin/systemctl stop church, /bin/systemctl restart church, /bin/systemctl is-active church, /bin/systemctl start dispatcher, /bin/systemctl stop dispatcher, /bin/systemctl restart dispatcher, /bin/systemctl is-active dispatcher, /bin/systemctl start flood, /bin/systemctl stop flood, /bin/systemctl restart flood, /bin/systemctl is-active flood, /usr/bin/journalctl -u minecraft-bedrock --no-pager -n 2000 -o cat" > /etc/sudoers.d/dashboard-mc'
 sudo visudo -cf /etc/sudoers.d/dashboard-mc
 ```
 
@@ -242,13 +252,17 @@ sudo visudo -cf /etc/sudoers.d/dashboard-mc
 | **GET** | `/auth/me` | Qualquer autenticado | Exibe dados do usuário logado e sua role. |
 | **GET** | `/system/status` | Moderator / Admin | Status do Minecraft (Moderator) ou telemetria completa (Admin). |
 | **POST** | `/minecraft/restart` | **Moderator / Admin** | Reinicia o servidor de Minecraft com segurança. |
-| **POST** | `/minecraft/allowlist/add`| **Moderator / Admin** | Insere Gamertag validada no `allowlist.json` e reinicia o BDS. |
+| **GET** | `/minecraft/players/recent` | **Moderator / Admin** | Busca jogadores conectados recentemente nos últimos 2.000 registros do journal do Minecraft e retorna gamertag e XUID. |
+| **GET** | `/minecraft/allowlist` | **Moderator / Admin** | Lista jogadores aceitos, incluindo XUID quando cadastrado. |
+| **POST** | `/minecraft/allowlist/add`| **Moderator / Admin** | Adiciona/atualiza nome e XUID no `allowlist.json` e reinicia o BDS. |
 | **POST** | `/minecraft/command` | **Admin Only** | Envia um comando ao console por FIFO. Requer leitor ativo. |
 | **POST** | `/minecraft/op/add` | **Admin Only** | Concede permissão de Operador no `permissions.json` via XUID. |
 | **POST** | `/service/{service}/{action}` | **Admin Only** | Executa `start`, `stop`, `restart` ou `status` em qualquer serviço da whitelist. |
-| **POST** | `/batch/gaming-mode` | **Admin Only** | **Modo Jogo:** Para `church`, `dispatcher`, `flaskapp` e `flood`, e inicia o Minecraft. |
-| **POST** | `/batch/web-mode` | **Admin Only** | **Modo Web:** Para o Minecraft e inicia `church`, `dispatcher`, `flaskapp` e `flood`. |
+| **POST** | `/batch/gaming-mode` | **Admin Only** | **Modo Jogo:** Para `church`, `dispatcher` e `flood`, e inicia o Minecraft. |
+| **POST** | `/batch/web-mode` | **Admin Only** | **Modo Web:** Para o Minecraft e inicia `church`, `dispatcher` e `flood`. |
 | **POST** | `/batch/stop-all` | **Admin Only** | Encerra todos os serviços registrados (manutenção). |
+
+O endpoint de jogadores recentes precisa de permissão restrita para consultar o journal. O exemplo de `sudoers` acima libera somente a consulta dos últimos 2.000 registros do serviço `minecraft-bedrock`; confirme o caminho do `journalctl` com `command -v journalctl` no servidor e ajuste `/usr/bin/journalctl` se necessário. Jogadores encontrados nos logs podem ser adicionados à allowlist com nome e XUID; entradas antigas sem XUID continuam listadas e podem ser atualizadas quando a identidade for confirmada.
 
 ---
 

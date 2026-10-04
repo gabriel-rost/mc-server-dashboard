@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -7,6 +8,12 @@ from pydantic import BaseModel, Field
 
 from auth import User, require_admin, require_moderator_or_admin
 from services.minecraft import write_minecraft_command
+from services.players import (
+    PlayerIdentityConflict,
+    add_allowlist_player,
+    load_allowlist,
+    read_recent_players,
+)
 from services.system import safe_systemctl
 
 
@@ -21,6 +28,11 @@ class AllowlistPlayerModel(BaseModel):
         max_length=16,
         pattern=r"^[a-zA-Z0-9_ ]+$",
         description="Nick oficial da Xbox Live (apenas letras, números, espaços e _)",
+    )
+    xuid: str = Field(
+        ...,
+        pattern=r"^\d{16}$",
+        description="XUID numérico com exatamente 16 dígitos, obtido nos logs do servidor",
     )
 
 
@@ -76,6 +88,45 @@ def send_minecraft_command(
     return {"status": "success", "command_sent": command}
 
 
+@router.get(
+    "/minecraft/players/recent",
+    summary="📋 Jogadores recentes nos logs",
+    tags=["Minecraft (Amigos & Admin)"],
+)
+def get_recent_players(
+    limit: int = Query(default=50, ge=1, le=100),
+    _: User = Depends(require_moderator_or_admin),
+) -> dict[str, object]:
+    """Return recent player names and XUIDs found in the Minecraft service logs."""
+    try:
+        players = read_recent_players(limit)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível consultar os logs do Minecraft.",
+        ) from exc
+    return {"players": players, "count": len(players)}
+
+
+@router.get(
+    "/minecraft/allowlist",
+    summary="👥 Listar jogadores aceitos",
+    tags=["Minecraft (Amigos & Admin)"],
+)
+def get_allowlist(
+    _: User = Depends(require_moderator_or_admin),
+) -> dict[str, object]:
+    """Return the configured Minecraft allowlist."""
+    try:
+        players = load_allowlist(MINECRAFT_DIR / "allowlist.json")
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível ler o allowlist.json; verifique se o arquivo é válido e acessível.",
+        ) from exc
+    return {"players": players, "count": len(players)}
+
+
 @router.post(
     "/minecraft/allowlist/add",
     summary="➕ Adicionar Jogador na Allowlist",
@@ -87,24 +138,30 @@ def add_to_allowlist(
 ) -> dict[str, str]:
     """Add a player to the allowlist and restart Minecraft."""
     allowlist_path = MINECRAFT_DIR / "allowlist.json"
-    data = []
-    if allowlist_path.exists():
-        try:
-            with allowlist_path.open("r", encoding="utf-8") as file:
-                data = json.load(file)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            data = []
+    try:
+        result = add_allowlist_player(
+            allowlist_path,
+            player.gamertag,
+            player.xuid,
+        )
+    except PlayerIdentityConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Não foi possível atualizar o allowlist.json; verifique se o arquivo é válido e acessível.",
+        ) from exc
 
-    if not any(entry.get("name") == player.gamertag for entry in data):
-        data.append({"ignoresPlayerLimit": False, "name": player.gamertag})
-        with allowlist_path.open("w", encoding="utf-8") as file:
-            json.dump(data, file, indent=2)
-
+    if result != "existing":
         safe_systemctl("restart", "minecraft-bedrock")
         return {
             "status": "success",
             "message": (
-                f"Jogador '{player.gamertag}' adicionado à allowlist por "
+                f"Jogador '{player.gamertag}' "
+                f"{'adicionado' if result == 'added' else 'atualizado'} à allowlist por "
                 f"'{user.username}'! Servidor recarregado."
             ),
         }

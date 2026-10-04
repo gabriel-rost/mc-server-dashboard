@@ -7,11 +7,10 @@ ALLOWED_SERVICES = {
     "minecraft-bedrock",
     "church",
     "dispatcher",
-    "flaskapp",
     "flood",
 }
 ALLOWED_ACTIONS = {"start", "stop", "restart", "is-active"}
-WEB_SERVICES = ["church", "dispatcher", "flaskapp", "flood"]
+WEB_SERVICES = ["church", "dispatcher", "flood"]
 GAME_SERVICES = ["minecraft-bedrock"]
 
 

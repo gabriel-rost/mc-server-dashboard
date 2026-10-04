@@ -1,0 +1,12 @@
+[Unit]
+Description=FastAPI Server Dashboard
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/mc-server-dashboard
+ExecStart=/home/ubuntu/projects/mc-server-dashboard/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
