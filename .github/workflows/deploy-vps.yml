@@ -16,6 +16,7 @@ jobs:
   deploy:
     name: Deploy via SSH
     runs-on: ubuntu-latest
+    environment: Deploy
 
     steps:
       - name: Deploy on VPS
