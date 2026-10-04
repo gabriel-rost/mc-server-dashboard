@@ -1,0 +1,49 @@
+name: Deploy to VPS (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Motivo do deploy (opcional)"
+        required: false
+        default: "Atualização de rotina"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOY_REASON: ${{ inputs.reason }}
+          VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          envs: DEPLOY_REASON,VPS_PROJECT_PATH
+          script: |
+            set -eu
+
+            printf '==> Motivo informado: %s\n' "$DEPLOY_REASON"
+            echo "==> Acessando diretório do projeto"
+            cd "$VPS_PROJECT_PATH"
+
+            echo "==> Atualizando código fonte"
+            git pull --ff-only origin main
+
+            echo "==> Sincronizando dependências Python"
+            "$VPS_PROJECT_PATH/.venv/bin/pip" install -r requirements.txt
+
+            echo "==> Reiniciando o serviço FastAPI"
+            sudo systemctl restart server-dashboard.service
+            sudo systemctl is-active --quiet server-dashboard.service
+
+            echo "Deploy concluído com sucesso!"

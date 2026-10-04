@@ -203,6 +203,19 @@ sudo certbot renew --dry-run
 
 Mantenha o Uvicorn vinculado a `127.0.0.1` e não exponha a porta `8080` publicamente. Se usar Cloudflare, configure SSL/TLS como **Full (strict)** para manter criptografia também entre o proxy e o Nginx.
 
+### Deploy manual pela VPS
+O workflow `.github/workflows/deploy-vps.yml` permite disparar um deploy manualmente em **Actions → Deploy to VPS (Manual) → Run workflow**. Ele atualiza a branch `main`, instala as dependências no `.venv` e reinicia `server-dashboard.service`; não executa migrações nem coleta estáticos, pois este projeto não usa essas etapas.
+
+Configure estes **Repository secrets** no GitHub antes do primeiro deploy:
+
+- `VPS_HOST`: endereço IP ou hostname da VPS.
+- `VPS_USER`: usuário SSH com acesso ao projeto e permissão para reiniciar `server-dashboard.service` via `sudo`.
+- `VPS_SSH_KEY`: chave privada SSH correspondente à chave pública autorizada na VPS.
+- `VPS_PORT`: porta SSH da VPS.
+- `VPS_PROJECT_PATH`: caminho absoluto do projeto na VPS, por exemplo `/home/ubuntu/projects/mc-server-dashboard`.
+
+O usuário configurado também precisa conseguir executar `git pull` no repositório e ter o ambiente virtual em `$VPS_PROJECT_PATH/.venv`. O motivo informado no disparo é passado como variável de ambiente ao script remoto, sem interpolação direta no comando shell.
+
 ### A. Camada de Segurança & RBAC (Role-Based Access Control)
 Para prevenir riscos ao executar comandos de sistema (`systemctl`), a API conta com:
 1. **Autenticação HTTP Basic**:
